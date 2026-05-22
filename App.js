@@ -12,6 +12,8 @@ dayjs.extend(timezone);
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useState } from 'react';
 
+
+
 const formatTime = (dateString) => {
   if (!dateString) return "TBD";
   const timePart = dateString.split('T')[1]; 
@@ -32,14 +34,22 @@ const formatDate = (dateString) => {
   return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 };
 
-const getDelayInfo = (delayMins) => {
-  if (!delayMins || delayMins <= 0) return { text: "On Time", color: '#28a745' };
-  const hrs = Math.floor(delayMins / 60);
-  const mins = delayMins % 60;
-  return { 
-    text: hrs > 0 ? `Delayed ${hrs}h ${mins}m` : `Delayed ${mins}m`, 
-    color: '#dc3545' 
-  };
+const getDelayInfo = (scheduledStr, actualStr) => {
+  if (!scheduledStr || !actualStr) {
+    return { text: 'On Time', color: '#5a9b2b', hasChanged: false };
+  }
+
+  const scheduled = dayjs(scheduledStr.substring(0, 19));
+  const actual = dayjs(actualStr.substring(0, 19));
+  const diffMinutes = actual.diff(scheduled, 'minute');
+
+  if (diffMinutes > 0) {
+    return { text: `${diffMinutes} min late`, color: '#d9534f', hasChanged: true };
+  } else if (diffMinutes < 0) {
+    return { text: `${Math.abs(diffMinutes)} min early`, color: '#5a9b2b', hasChanged: true };
+  } else {
+    return { text: 'On Time', color: '#5a9b2b', hasChanged: false };
+  }
 };
 
 const getFlightProgress = (depStr, arrStr, depTz, arrTz) => {
@@ -79,31 +89,42 @@ export default function App() {
   const [flightNumber, setFlightNumber] = useState('');
   const [flightData, setFlightData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const handleSearch = async () => {
 
     Keyboard.dismiss();
 
-    if (!flightNumber) {
-      Alert.alert("Hold up!", "Please enter a flight number first.");
-      return;
-    }
-
+    if (!flightNumber.trim()) return;
+    
     setIsLoading(true);
-    setFlightData(null); // Clears the old ticket when a new search starts
+    setFlightData(null);
+    setError(null); // Clear previous errors
 
     try {
-      // IMPORTANT: Paste your AviationStack API Key below!
-      const response = await fetch(`http://api.aviationstack.com/v1/flights?access_key=8910b6a56916f30ddce71d9350910beb&flight_iata=${flightNumber}`);
+      const baseUrl = process.env.EXPO_PUBLIC_API_URL;
+      const response = await fetch(`${baseUrl}/api/flight/${flightNumber}`);
+      
       const json = await response.json();
-
-      if (json.data && json.data.length > 0) {
-        setFlightData(json.data[0]); // Save the data, but no more pop-up alert!
-      } else {
-        Alert.alert("Not Found", "We couldn't find a flight with that number.");
+      
+      // AviationStack returns an empty array in `data` if the flight doesn't exist
+      if (!json.data || json.data.length === 0) {
+        setError({
+          icon: '📭',
+          title: 'Flight Not Found',
+          message: `We couldn't find any active data for ${flightNumber.toUpperCase()}. Double-check the airline code and number.`
+        });
+        setIsLoading(false);
+        return;
       }
-    } catch (error) {
-      Alert.alert("Error", "Could not connect to the database.");
+
+      setFlightData(json.data[0]);
+    } catch (err) {
+      setError({
+        icon: '📡',
+        title: 'Network Error',
+        message: 'Unable to reach the server. Please check your connection and ensure the backend proxy is running.'
+      });
     } finally {
       setIsLoading(false);
     }
@@ -135,11 +156,41 @@ export default function App() {
           <Button title="Search" onPress={handleSearch} />
         )}
 
+
+        {/* --- 1. THE NEW EMPTY STATE --- */}
+        {!isLoading && !flightData && !error && (
+          <View style={styles.emptyStateContainer}>
+            <Text style={styles.emptyStateIcon}>🌍</Text>
+            <Text style={styles.emptyStateTitle}>Track Any Flight</Text>
+            <Text style={styles.emptyStateSubtitle}>
+              Enter an airline code and flight number (e.g., AH2701) to see real-time routing and delays.
+            </Text>
+          </View>
+        )}
+
+        {/* --- 2. THE ERROR STATE --- */}
+        {!isLoading && error && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorIcon}>{error.icon}</Text>
+            <Text style={styles.errorTitle}>{error.title}</Text>
+            <Text style={styles.errorMessage}>{error.message}</Text>
+          </View>
+        )}
+
+        {/* --- 3. THE TICKET CARD --- */}
         {/* 3. If we have flightData, draw this Ticket Card on the screen */}
-        
         {flightData && (() => {
-          const depDelay = getDelayInfo(flightData.departure.delay);
-          const arrDelay = getDelayInfo(flightData.arrival.delay);
+          
+          // NEW: Feed the raw timestamps into our custom Day.js calculator
+          const depDelay = getDelayInfo(
+            flightData.departure.scheduled,
+            flightData.departure.actual || flightData.departure.estimated
+          );
+          
+          const arrDelay = getDelayInfo(
+            flightData.arrival.scheduled,
+            flightData.arrival.estimated || flightData.arrival.actual
+          );
           
           // NEW: Smarter active check that overrides the lazy API status
           const hasDeparted = !!flightData.departure.actual;
@@ -157,19 +208,23 @@ export default function App() {
                 
                 {/* --- TOP ROW: CITIES --- */}
                 <View style={styles.citiesRow}>
+                  
                   {/* --- DEPARTURE BLOCK --- */}
                   <View style={styles.cityBlockLeft}>
                     <Text style={styles.cityLabel}>DEPART</Text>
                     <Text style={styles.airportCode}>{flightData.departure.iata}</Text>
                     <Text style={styles.dateText}>{formatDate(flightData.departure.estimated || flightData.departure.scheduled)}</Text>
                     
-                    {flightData.departure.delay > 0 ? (
-                      <View style={styles.delayedTimeContainerLeft}>
+                    {/* NEW: Use our hasChanged boolean to trigger the strikethrough layout */}
+                    {depDelay.hasChanged ? (
+                      <View style={styles.timeStackLeft}>
                         <Text style={styles.scheduledTime}>{formatTime(flightData.departure.scheduled)}</Text>
-                        <Text style={styles.actualTime}>{formatTime(flightData.departure.estimated || flightData.departure.actual)}</Text>
+                        <Text style={[styles.actualTime, { color: depDelay.color }]}>
+                          {formatTime(flightData.departure.actual || flightData.departure.estimated || flightData.departure.scheduled)}
+                        </Text>
                       </View>
                     ) : (
-                      <Text style={styles.timeText}>{formatTime(flightData.departure.scheduled || flightData.departure.estimated)}</Text>
+                      <Text style={styles.timeText}>{formatTime(flightData.departure.scheduled)}</Text>
                     )}
 
                     <Text style={styles.details}>Gate: {flightData.departure.gate || "TBD"}</Text>
@@ -182,18 +237,22 @@ export default function App() {
                     <Text style={styles.airportCode}>{flightData.arrival.iata}</Text>
                     <Text style={styles.dateText}>{formatDate(flightData.arrival.estimated || flightData.arrival.scheduled)}</Text>
                     
-                    {flightData.arrival.delay > 0 ? (
-                      <View style={styles.delayedTimeContainerRight}>
+                    {/* NEW: Use our hasChanged boolean for Arrival as well */}
+                    {arrDelay.hasChanged ? (
+                      <View style={styles.timeStackRight}>
                         <Text style={styles.scheduledTime}>{formatTime(flightData.arrival.scheduled)}</Text>
-                        <Text style={styles.actualTime}>{formatTime(flightData.arrival.estimated || flightData.arrival.actual)}</Text>
+                        <Text style={[styles.actualTime, { color: arrDelay.color }]}>
+                          {formatTime(flightData.arrival.actual || flightData.arrival.estimated || flightData.arrival.scheduled)}
+                        </Text>
                       </View>
                     ) : (
-                      <Text style={styles.timeText}>{formatTime(flightData.arrival.scheduled || flightData.arrival.estimated)}</Text>
+                      <Text style={styles.timeText}>{formatTime(flightData.arrival.scheduled)}</Text>
                     )}
 
                     <Text style={styles.details}>Term: {flightData.arrival.terminal || "TBD"}</Text>
                     <Text style={[styles.delayText, { color: arrDelay.color }]}>{arrDelay.text}</Text>
                   </View>
+                  
                 </View>
 
                 {/* --- BOTTOM ROW: FLIGHTAWARE PROGRESS BAR --- */}
@@ -424,5 +483,76 @@ const styles = StyleSheet.create({
   },
   planeIcon: {
     fontSize: 24,
+  },
+  emptyStateContainer: {
+    flex: 1, // Tells it to fill all the available empty space below the search bar
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+    marginTop: -40, // Pulls it up slightly so it feels perfectly centered
+  },
+  emptyStateIcon: {
+    fontSize: 72,
+    marginBottom: 20,
+  },
+  emptyStateTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  emptyStateSubtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 22, // Adds breathing room between the lines of text
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+    marginTop: -40,
+  },
+  errorIcon: {
+    fontSize: 64,
+    marginBottom: 15,
+  },
+  errorTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#d9534f', // A premium, muted red
+    marginBottom: 10,
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  timeStackLeft: {
+    alignItems: 'flex-start',
+    marginVertical: 4,
+  },
+  timeStackRight: {
+    alignItems: 'flex-end',
+    marginVertical: 4,
+  },
+  timeText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginVertical: 4,
+  },
+  scheduledTime: {
+    fontSize: 14,
+    color: '#999',
+    textDecorationLine: 'line-through', // The strikethrough magic
+    marginBottom: -2, // Pulls the actual time up slightly so they group together visually
+  },
+  actualTime: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    // We let the inline style dynamically inject the red or green color here!
   }
 });
