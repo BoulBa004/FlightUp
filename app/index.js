@@ -123,6 +123,19 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [recentSearches, setRecentSearches] = useState([]);
 
+  // NEW: Mobile Panel Animation State
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const slideAnim = useRef(new Animated.Value(500)).current; // Starts 500px off-screen to the right
+
+  // NEW: The Animation Engine
+  useEffect(() => {
+    Animated.timing(slideAnim, {
+      toValue: isPanelOpen ? 0 : 500, // 0 = on screen, 500 = off screen
+      duration: 300,                  // 300ms smooth slide
+      useNativeDriver: true,          // Offloads animation to the native GPU
+    }).start();
+  }, [isPanelOpen, slideAnim]);
+
   // NEW: Responsive Screen Detection
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768; // Standard tablet/desktop breakpoint
@@ -381,6 +394,16 @@ export default function App() {
                 </View>
               </View>
 
+              {/* NEW: MOBILE TRIGGER BUTTON (Only shows on small screens) */}
+              {!isDesktop && (
+                <TouchableOpacity 
+                  style={styles.mobileDetailButton}
+                  onPress={() => setIsPanelOpen(true)}
+                >
+                  <Text style={styles.mobileDetailButtonText}>Show More Details</Text>
+                </TouchableOpacity>
+              )}
+
               {/* NEW: THE DESKTOP-ONLY SIDE PANEL PLACEHOLDER */}
               {isDesktop && (
                 <View style={styles.sidePanelDesktop}>
@@ -406,6 +429,25 @@ export default function App() {
 
         </ScrollView>
         <StatusBar style="auto" />
+      
+      {/* NEW: MOBILE OFF-CANVAS ANIMATED PANEL */}
+        {!isDesktop && (
+          <Animated.View 
+            style={[
+              styles.mobileSidePanel, 
+              { transform: [{ translateX: slideAnim }] } // This connects the UI to the GPU animation
+            ]}
+          >
+            <View style={styles.mobilePanelHeader}>
+              <Text style={styles.sidePanelTitle}>Flight Metadata</Text>
+              <TouchableOpacity onPress={() => setIsPanelOpen(false)}>
+                <Text style={styles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.sidePanelText}>Logo & deeper details will mount here.</Text>
+          </Animated.View>
+        )}
+
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -796,5 +838,60 @@ const styles = StyleSheet.create({
     color: '#00FFFF',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  // NEW: Mobile Button Styles
+  mobileDetailButton: {
+    marginTop: 15,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: 'rgba(0, 255, 255, 0.1)', // Faint cyan background
+    borderColor: '#00FFFF',
+    borderWidth: 1,
+    borderRadius: 8,
+    alignSelf: 'center',
+    width: '100%',
+    alignItems: 'center',
+  },
+  mobileDetailButtonText: {
+    color: '#00FFFF',
+    fontWeight: 'bold',
+    fontSize: 14,
+    textTransform: 'uppercase',
+  },
+
+  // NEW: Mobile Off-Canvas Panel Styles
+  mobileSidePanel: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: '80%', 
+    maxWidth: 400,
+    backgroundColor: '#0B0E14', // Match the Midnight Radar background
+    borderLeftWidth: 1,
+    borderColor: 'rgba(0, 255, 255, 0.2)',
+    padding: 20,
+    paddingTop: 60, // Pushes content below the iOS notch
+    shadowColor: '#000',
+    shadowOffset: { width: -5, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 15,
+    elevation: 20, // Forces it above everything on Android
+    zIndex: 100,   // Forces it above everything on Web/iOS
+  },
+  mobilePanelHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 30,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    paddingBottom: 15,
+  },
+  closeButtonText: {
+    color: '#00FFFF',
+    fontSize: 24,
+    fontWeight: 'bold',
+    paddingHorizontal: 10,
   }
 });
