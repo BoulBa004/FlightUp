@@ -1,5 +1,4 @@
 import { StatusBar } from 'expo-status-bar';
-// 1. Added View and ActivityIndicator (loading spinner) to the imports
 import React, { useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, Animated, Button, ScrollView, RefreshControl} from 'react-native';
@@ -8,14 +7,11 @@ import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import { COLORS } from '../constants/theme';
 import { Link } from 'expo-router';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+
 // Activate the plugins
 dayjs.extend(utc);
 dayjs.extend(timezone);
-
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-
-
-
 
 const formatTime = (dateString) => {
   if (!dateString) return "TBD";
@@ -31,7 +27,6 @@ const formatTime = (dateString) => {
 
 const formatDate = (dateString) => {
   if (!dateString) return "";
-  // Split the string to grab just the "YYYY-MM-DD" portion
   const [year, month, day] = dateString.split('T')[0].split('-');
   const date = new Date(year, month - 1, day);
   return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
@@ -58,15 +53,12 @@ const getDelayInfo = (scheduledStr, actualStr) => {
 const getFlightProgress = (depStr, arrStr, depTz, arrTz) => {
   if (!depStr || !arrStr || !depTz || !arrTz) return null;
   
-  // 1. Identify the zone and convert to absolute universal time
   const depTime = dayjs.tz(depStr.substring(0, 19), depTz);
   const arrTime = dayjs.tz(arrStr.substring(0, 19), arrTz);
-  const now = dayjs(); // Current absolute time
+  const now = dayjs(); 
   
-  // If the flight hasn't actually taken off yet
   if (now.isBefore(depTime)) return null; 
   
-  // 2. Make the necessary calculations (in milliseconds)
   const totalMs = Math.max(0, arrTime.diff(depTime));
   const elapsedMs = Math.max(0, Math.min(now.diff(depTime), totalMs)); 
   const remainingMs = Math.max(0, totalMs - elapsedMs);
@@ -89,10 +81,8 @@ const getFlightProgress = (depStr, arrStr, depTz, arrTz) => {
 };
 
 const SkeletonCard = () => {
-  // 1. Set up the animation value (starting at 30% opacity)
   const fadeAnim = useRef(new Animated.Value(0.3)).current;
 
-  // 2. Create the pulsing loop
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
@@ -102,14 +92,10 @@ const SkeletonCard = () => {
     ).start();
   }, [fadeAnim]);
 
-  // 3. Render the fake layout blocks
   return (
     <Animated.View style={[styles.ticketCard, { opacity: fadeAnim }]}>
-      {/* Fake Airline Header */}
       <View style={styles.skeletonHeader} />
       <View style={styles.skeletonSubHeader} />
-      
-      {/* Fake Cities Row */}
       <View style={styles.citiesRow}>
         <View style={styles.skeletonCityBlockLeft}>
           <View style={styles.skeletonLabel} />
@@ -122,8 +108,6 @@ const SkeletonCard = () => {
           <View style={styles.skeletonTime} />
         </View>
       </View>
-
-      {/* Fake Progress Bar */}
       <View style={styles.progressSection}>
         <View style={styles.skeletonProgressBar} />
       </View>
@@ -136,13 +120,9 @@ export default function App() {
   const [flightData, setFlightData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  
-  // NEW: Track the pull-to-refresh state separately
   const [refreshing, setRefreshing] = useState(false);
-
   const [recentSearches, setRecentSearches] = useState([]);
 
-  // 1. Load history when the app opens
   useEffect(() => {
     const loadHistory = async () => {
       try {
@@ -153,11 +133,9 @@ export default function App() {
     loadHistory();
   }, []);
 
-  // 2. Save a new search to history (keeping the most recent 5)
   const saveSearchToHistory = async (flightNum) => {
     try {
       const upperFlight = flightNum.toUpperCase();
-      // Remove duplicates and keep only the top 5
       const updatedHistory = [upperFlight, ...recentSearches.filter(f => f !== upperFlight)].slice(0, 5);
       
       setRecentSearches(updatedHistory);
@@ -165,32 +143,44 @@ export default function App() {
     } catch (e) { console.error('Failed to save history', e); }
   };
 
-  const handleSearch = async (isRefresh = false) => {
+  // UPDATED: Smart handler that accepts either a boolean (refresh) or a string (history chip)
+  const handleSearch = async (inputParam) => {
     Keyboard.dismiss();
-    if (!flightNumber.trim()) return;
+    
+    // 1. Determine exactly what triggered this search
+    const isRefresh = inputParam === true;
+    const targetFlight = typeof inputParam === 'string' ? inputParam : flightNumber;
 
-    // 1. Differentiate the loading states
-    if (isRefresh === true) {
+    if (!targetFlight || !targetFlight.trim()) return;
+
+    // 2. Route the visual loading state correctly
+    if (isRefresh) {
       setRefreshing(true);
     } else {
       setIsLoading(true);
-      setFlightData(null); // Only clear the screen on a fresh search
+      setFlightData(null); 
     }
     
     setError(null);
 
     try {
       const baseUrl = process.env.EXPO_PUBLIC_API_URL;
-      const response = await fetch(`${baseUrl}/api/flight/${flightNumber}`);
+      // 3. Fetch using the correct target flight
+      const response = await fetch(`${baseUrl}/api/flight/${targetFlight.toUpperCase()}`);
       const json = await response.json();
-      // Add this right after you successfully receive the flight data
-      saveSearchToHistory(flightNumber);
+      
+      saveSearchToHistory(targetFlight);
+      
+      // If a chip was pressed, update the text input box visually
+      if (typeof inputParam === 'string') {
+        setFlightNumber(targetFlight.toUpperCase());
+      }
       
       if (!json.data || json.data.length === 0) {
         setError({
           icon: '📭',
           title: 'Flight Not Found',
-          message: `We couldn't find any active data for ${flightNumber.toUpperCase()}. Double-check the airline code.`
+          message: `We couldn't find any active data for ${targetFlight.toUpperCase()}. Double-check the airline code.`
         });
         return;
       }
@@ -203,7 +193,6 @@ export default function App() {
         message: 'Unable to reach the server. Please check your connection.'
       });
     } finally {
-      // 2. Turn off both spinners when finished
       setIsLoading(false);
       setRefreshing(false);
     }
@@ -211,9 +200,6 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-
-    
-
       <SafeAreaView style={styles.container}>
         <Text style={styles.title}>FlightUp</Text>
         
@@ -228,10 +214,8 @@ export default function App() {
           blurOnSubmit={true}
         />
 
-        {/* The Search Button stays visible, but we disable it while loading so they can't spam it */}
         <Button title="Search" onPress={handleSearch} disabled={isLoading} />
 
-        {/* NEW: Recent Searches UI */}
         {recentSearches.length > 0 && (
           <View style={styles.historyContainer}>
             <Text style={styles.historyTitle}>Recent Searches</Text>
@@ -240,10 +224,9 @@ export default function App() {
                 <TouchableOpacity 
                   key={flight} 
                   style={styles.historyChip}
-                  // When they tap a chip, auto-populate the search and run it
                   onPress={() => {
-                    setSearchQuery(flight); 
-                    handleSearch(flight); // Assumes your search function accepts a parameter
+                    // UPDATED: Pass the string directly into the smart handler
+                    handleSearch(flight); 
                   }}
                 >
                   <Text style={styles.historyChipText}>{flight}</Text>
@@ -255,7 +238,7 @@ export default function App() {
 
         <ScrollView 
           style={{ width: '100%' }} 
-          contentContainerStyle={{ flexGrow: 1 }} // Ensures empty states stay centered
+          contentContainerStyle={{ flexGrow: 1 }} 
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           alwaysBounceVertical={true}
@@ -263,20 +246,15 @@ export default function App() {
             <RefreshControl 
               refreshing={refreshing} 
               onRefresh={() => handleSearch(true)} 
-              tintColor="#007bff" // Makes the iOS spinner blue
+              tintColor="#007bff" 
             />
           }
         >
 
-        {/* --- LOADING SKELETON --- */}
-        {/* This will push down into the empty space just like the real ticket */}
-        
         {isLoading && (
           <SkeletonCard />
         )}
 
-
-        {/* --- 1. THE NEW EMPTY STATE --- */}
         {!isLoading && !flightData && !error && (
           <View style={styles.emptyStateContainer}>
             <Text style={styles.emptyStateIcon}>🌍</Text>
@@ -287,7 +265,6 @@ export default function App() {
           </View>
         )}
 
-        {/* --- 2. THE ERROR STATE --- */}
         {!isLoading && error && (
           <View style={styles.errorContainer}>
             <Text style={styles.errorIcon}>{error.icon}</Text>
@@ -296,11 +273,7 @@ export default function App() {
           </View>
         )}
 
-        {/* --- 3. THE TICKET CARD --- */}
-        {/* 3. If we have flightData, draw this Ticket Card on the screen */}
         {flightData && (() => {
-          
-          // NEW: Feed the raw timestamps into our custom Day.js calculator
           const depDelay = getDelayInfo(
             flightData.departure.scheduled,
             flightData.departure.actual || flightData.departure.estimated
@@ -311,7 +284,6 @@ export default function App() {
             flightData.arrival.estimated || flightData.arrival.actual
           );
           
-          // NEW: Smarter active check that overrides the lazy API status
           const hasDeparted = !!flightData.departure.actual;
           const hasArrived = !!flightData.arrival.actual;
           const isActive = flightData.flight_status === 'active' || (hasDeparted && !hasArrived);
@@ -325,16 +297,13 @@ export default function App() {
 
               <View style={styles.routeContainer}>
                 
-                {/* --- TOP ROW: CITIES --- */}
                 <View style={styles.citiesRow}>
                   
-                  {/* --- DEPARTURE BLOCK --- */}
                   <View style={styles.cityBlockLeft}>
                     <Text style={styles.cityLabel}>DEPART</Text>
                     <Text style={styles.airportCode}>{flightData.departure.iata}</Text>
                     <Text style={styles.dateText}>{formatDate(flightData.departure.estimated || flightData.departure.scheduled)}</Text>
                     
-                    {/* NEW: Use our hasChanged boolean to trigger the strikethrough layout */}
                     {depDelay.hasChanged ? (
                       <View style={styles.timeStackLeft}>
                         <Text style={styles.scheduledTime}>{formatTime(flightData.departure.scheduled)}</Text>
@@ -350,13 +319,11 @@ export default function App() {
                     <Text style={[styles.delayText, { color: depDelay.color }]}>{depDelay.text}</Text>
                   </View>
 
-                  {/* --- ARRIVAL BLOCK --- */}
                   <View style={styles.cityBlockRight}>
                     <Text style={styles.cityLabel}>ARRIVE</Text>
                     <Text style={styles.airportCode}>{flightData.arrival.iata}</Text>
                     <Text style={styles.dateText}>{formatDate(flightData.arrival.estimated || flightData.arrival.scheduled)}</Text>
                     
-                    {/* NEW: Use our hasChanged boolean for Arrival as well */}
                     {arrDelay.hasChanged ? (
                       <View style={styles.timeStackRight}>
                         <Text style={styles.scheduledTime}>{formatTime(flightData.arrival.scheduled)}</Text>
@@ -374,13 +341,12 @@ export default function App() {
                   
                 </View>
 
-                {/* --- BOTTOM ROW: FLIGHTAWARE PROGRESS BAR --- */}
                 {isActive && (() => {
                   const progress = getFlightProgress(
                     flightData.departure.actual || flightData.departure.estimated,
                     flightData.arrival.estimated || flightData.arrival.scheduled,
-                    flightData.departure.timezone, // NEW: Pass departure timezone
-                    flightData.arrival.timezone    // NEW: Pass arrival timezone
+                    flightData.departure.timezone, 
+                    flightData.arrival.timezone    
                   );
                   return progress ? (
                     <View style={styles.progressSection}>
@@ -405,34 +371,34 @@ export default function App() {
                 })()}
 
               </View>
-              {/* NEW: Navigation Footer */}
-              <View style={styles.navFooter}>
-                <Link href="/about" style={styles.navLink}>
-                  <Text style={styles.navText}>About</Text>
-                </Link>
-                <Text style={styles.navSeparator}>|</Text>
-                <Link href="/contact" style={styles.navLink}>
-                  <Text style={styles.navText}>Contact</Text>
-                </Link>
-              </View>
             </View>
+            
           );
         })()}
+
+        <View style={styles.navFooter}>
+          <Link href="/about" style={styles.navLink}>
+            <Text style={styles.navText}>About</Text>
+          </Link>
+          <Text style={styles.navSeparator}>|</Text>
+          <Link href="/contact" style={styles.navLink}>
+            <Text style={styles.navText}>Contact</Text>
+          </Link>
+        </View>
+
         </ScrollView>
         <StatusBar style="auto" />
       </SafeAreaView>
-    
     </SafeAreaProvider>
   );
 }
 
-// 4. Added the CSS to make the Ticket Card look great
 const styles = StyleSheet.create({
   container: {
     flex: 1, 
     backgroundColor: COLORS.background,
     alignItems: 'center', 
-    justifyContent: 'center', // Wait, let's push it to the top so the keyboard doesn't hide it
+    justifyContent: 'center', 
     padding: 20,
     paddingTop: 60,
   },
@@ -445,13 +411,13 @@ const styles = StyleSheet.create({
   input: {
     height: 55,
     width: '100%',
-    borderColor: 'rgba(255,255,255,0.1)', // Softened border for dark mode
+    borderColor: 'rgba(255,255,255,0.1)', 
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 15,
     fontSize: 18,
     backgroundColor: COLORS.surface,
-    color: COLORS.textMain, // Added so user input is visible
+    color: COLORS.textMain, 
     marginBottom: 20,
   },
   ticketCard: {
@@ -462,7 +428,7 @@ const styles = StyleSheet.create({
     padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3, // Slightly increased for dark mode depth
+    shadowOpacity: 0.3, 
     shadowRadius: 4,
     elevation: 3, 
   },
@@ -501,7 +467,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   timeText: {
-    fontSize: 20, // Merged your duplicate timeText blocks
+    fontSize: 20, 
     fontWeight: 'bold',
     marginTop: 5,
     marginVertical: 4,
@@ -516,9 +482,9 @@ const styles = StyleSheet.create({
     marginBottom: -2,
   },
   actualTime: {
-    fontSize: 20, // Merged your duplicate actualTime blocks
+    fontSize: 20, 
     fontWeight: 'bold',
-    color: COLORS.statusBad, // Base color, inline style can override
+    color: COLORS.statusBad, 
     marginTop: 2,
   },
   delayedTimeContainer: {
@@ -526,7 +492,7 @@ const styles = StyleSheet.create({
   },
   delayText: {
     fontSize: 12,
-    color: COLORS.statusBad, // Explicitly mapped to bad status
+    color: COLORS.statusBad, 
     marginTop: 4,
     fontWeight: 'bold',
   },
@@ -565,7 +531,7 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingTop: 10,
     borderTopWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)', // Soft dark mode divider
+    borderColor: 'rgba(255,255,255,0.1)', 
   },
   totalTimeText: {
     textAlign: 'center',
@@ -581,7 +547,7 @@ const styles = StyleSheet.create({
   },
   progressBarBackground: {
     height: 3,
-    backgroundColor: 'rgba(255,255,255,0.1)', // Dark mode track
+    backgroundColor: 'rgba(255,255,255,0.1)', 
     borderRadius: 2,
     width: '100%',
     position: 'absolute',
@@ -604,7 +570,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   progressPill: {
-    backgroundColor: COLORS.secondary, // Utilizing the deep purple accent
+    backgroundColor: COLORS.secondary, 
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 4,
@@ -628,7 +594,7 @@ const styles = StyleSheet.create({
   emptyStateIcon: {
     fontSize: 72,
     marginBottom: 20,
-    color: COLORS.textMuted, // Optional: ensures icon matches theme
+    color: COLORS.textMuted, 
   },
   emptyStateTitle: {
     fontSize: 22,
@@ -673,7 +639,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     marginVertical: 4,
   },
-  // Skeleton styles updated to a deeper contrast for dark mode
   skeletonHeader: {
     height: 24,
     width: '60%',
@@ -732,7 +697,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
   },
   navText: {
-    color: '#A0AAB5', // Radar Gray
+    color: '#A0AAB5', 
     fontSize: 14,
     fontWeight: 'bold',
     textTransform: 'uppercase',
@@ -743,11 +708,12 @@ const styles = StyleSheet.create({
   },
   historyContainer: {
     marginTop: 30,
+    marginBottom: 30,
     alignItems: 'center',
     width: '100%',
   },
   historyTitle: {
-    color: '#A0AAB5', // Radar Gray
+    color: '#A0AAB5', 
     fontSize: 14,
     fontWeight: 'bold',
     marginBottom: 10,
@@ -764,7 +730,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
-    borderColor: '#00FFFF', // Electric Cyan border
+    borderColor: '#00FFFF', 
     borderWidth: 1,
   },
   historyChipText: {
