@@ -1,7 +1,9 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, Animated, Button, ScrollView, RefreshControl, useWindowDimensions} from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, 
+  KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, 
+  Animated, Button, ScrollView, RefreshControl, useWindowDimensions, Image} from 'react-native';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
@@ -112,6 +114,56 @@ const SkeletonCard = () => {
         <View style={styles.skeletonProgressBar} />
       </View>
     </Animated.View>
+  );
+};
+
+// NEW: Reusable Metadata Component
+const FlightMetadata = ({ data }) => {
+  if (!data) return null;
+
+  return (
+    <View style={styles.metadataContainer}>
+      
+      {/* Dynamic Logo Engine */}
+      <View style={styles.logoContainer}>
+        <Image 
+          source={{ uri: `https://images.kiwi.com/airlines/128/${data.airline.iata}.png` }}
+          style={styles.airlineLogo}
+          resizeMode="contain"
+        />
+        <Text style={styles.metadataAirlineName}>{data.airline.name}</Text>
+      </View>
+
+      <View style={styles.metadataDivider} />
+
+      {/* Deep Flight Data Rows */}
+      <View style={styles.metadataRow}>
+        <Text style={styles.metadataLabel}>Flight Date</Text>
+        <Text style={styles.metadataValue}>{data.flight_date || "N/A"}</Text>
+      </View>
+
+      <View style={styles.metadataRow}>
+        <Text style={styles.metadataLabel}>Aircraft Type</Text>
+        {/* Using optional chaining (?.) because Aviationstack doesn't always provide aircraft data */}
+        <Text style={styles.metadataValue}>{data.aircraft?.iata || "Unassigned"}</Text>
+      </View>
+
+      <View style={styles.metadataRow}>
+        <Text style={styles.metadataLabel}>Live Radar Tracking</Text>
+        <Text style={styles.metadataValue}>{data.live ? "Enabled 🛰️" : "Offline 📡"}</Text>
+      </View>
+
+      <View style={styles.metadataRow}>
+        <Text style={styles.metadataLabel}>Dep. Timezone</Text>
+        <Text style={styles.metadataValue}>{data.departure.timezone || "N/A"}</Text>
+      </View>
+
+      <View style={styles.metadataRow}>
+        <Text style={styles.metadataLabel}>Arr. Timezone</Text>
+        <Text style={styles.metadataValue}>{data.arrival.timezone || "N/A"}</Text>
+      </View>
+
+    </View>
   );
 };
 
@@ -404,11 +456,11 @@ export default function App() {
                 </TouchableOpacity>
               )}
 
-              {/* NEW: THE DESKTOP-ONLY SIDE PANEL PLACEHOLDER */}
+              {/* NEW: THE DESKTOP-ONLY SIDE PANEL */}
               {isDesktop && (
                 <View style={styles.sidePanelDesktop}>
                   <Text style={styles.sidePanelTitle}>Flight Metadata</Text>
-                  <Text style={styles.sidePanelText}>Logo & deeper details will mount here.</Text>
+                  <FlightMetadata data={flightData} /> 
                 </View>
               )}
 
@@ -430,12 +482,12 @@ export default function App() {
         </ScrollView>
         <StatusBar style="auto" />
       
-      {/* NEW: MOBILE OFF-CANVAS ANIMATED PANEL */}
+        {/* NEW: MOBILE OFF-CANVAS ANIMATED PANEL */}
         {!isDesktop && (
           <Animated.View 
             style={[
               styles.mobileSidePanel, 
-              { transform: [{ translateX: slideAnim }] } // This connects the UI to the GPU animation
+              { transform: [{ translateX: slideAnim }] }
             ]}
           >
             <View style={styles.mobilePanelHeader}>
@@ -444,7 +496,10 @@ export default function App() {
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.sidePanelText}>Logo & deeper details will mount here.</Text>
+            
+            {/* Inject the exact same data component here */}
+            <FlightMetadata data={flightData} /> 
+
           </Animated.View>
         )}
 
@@ -893,5 +948,49 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     paddingHorizontal: 10,
+  },
+  // NEW: Flight Metadata & Logo Styles
+  metadataContainer: {
+    width: '100%',
+    marginTop: 10,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  airlineLogo: {
+    width: 140,
+    height: 70,
+    marginBottom: 10,
+  },
+  metadataAirlineName: {
+    color: COLORS.textMain,
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  metadataDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    width: '100%',
+    marginBottom: 20,
+  },
+  metadataRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  metadataLabel: {
+    color: COLORS.textMuted,
+    fontSize: 14,
+  },
+  metadataValue: {
+    color: '#00FFFF', // Electric Cyan to pop against the dark mode
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'right',
+    maxWidth: '60%', // Prevents long timezones from wrapping weirdly
   }
 });
