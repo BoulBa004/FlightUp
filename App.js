@@ -1,16 +1,18 @@
 import { StatusBar } from 'expo-status-bar';
 // 1. Added View and ActivityIndicator (loading spinner) to the imports
-import { StyleSheet, Text, TextInput, Button, Alert, View, ActivityIndicator, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, Animated, Button, ScrollView, RefreshControl} from 'react-native';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
+import { COLORS } from './constants/theme';
 
 // Activate the plugins
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { useState } from 'react';
+
 
 
 
@@ -76,7 +78,7 @@ const getFlightProgress = (depStr, arrStr, depTz, arrTz) => {
     const mins = totalMins % 60;
     return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
   };
-  
+
   return { 
     elapsed: formatMs(elapsedMs), 
     remaining: formatMs(remainingMs),
@@ -85,36 +87,83 @@ const getFlightProgress = (depStr, arrStr, depTz, arrTz) => {
   };
 };
 
+const SkeletonCard = () => {
+  // 1. Set up the animation value (starting at 30% opacity)
+  const fadeAnim = useRef(new Animated.Value(0.3)).current;
+
+  // 2. Create the pulsing loop
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.timing(fadeAnim, { toValue: 0.3, duration: 800, useNativeDriver: true })
+      ])
+    ).start();
+  }, [fadeAnim]);
+
+  // 3. Render the fake layout blocks
+  return (
+    <Animated.View style={[styles.ticketCard, { opacity: fadeAnim }]}>
+      {/* Fake Airline Header */}
+      <View style={styles.skeletonHeader} />
+      <View style={styles.skeletonSubHeader} />
+      
+      {/* Fake Cities Row */}
+      <View style={styles.citiesRow}>
+        <View style={styles.skeletonCityBlockLeft}>
+          <View style={styles.skeletonLabel} />
+          <View style={styles.skeletonCode} />
+          <View style={styles.skeletonTime} />
+        </View>
+        <View style={styles.skeletonCityBlockRight}>
+          <View style={styles.skeletonLabel} />
+          <View style={styles.skeletonCode} />
+          <View style={styles.skeletonTime} />
+        </View>
+      </View>
+
+      {/* Fake Progress Bar */}
+      <View style={styles.progressSection}>
+        <View style={styles.skeletonProgressBar} />
+      </View>
+    </Animated.View>
+  );
+};
+
 export default function App() {
   const [flightNumber, setFlightNumber] = useState('');
   const [flightData, setFlightData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  
+  // NEW: Track the pull-to-refresh state separately
+  const [refreshing, setRefreshing] = useState(false);
 
-  const handleSearch = async () => {
-
+  const handleSearch = async (isRefresh = false) => {
     Keyboard.dismiss();
-
     if (!flightNumber.trim()) return;
+
+    // 1. Differentiate the loading states
+    if (isRefresh === true) {
+      setRefreshing(true);
+    } else {
+      setIsLoading(true);
+      setFlightData(null); // Only clear the screen on a fresh search
+    }
     
-    setIsLoading(true);
-    setFlightData(null);
-    setError(null); // Clear previous errors
+    setError(null);
 
     try {
       const baseUrl = process.env.EXPO_PUBLIC_API_URL;
       const response = await fetch(`${baseUrl}/api/flight/${flightNumber}`);
-      
       const json = await response.json();
       
-      // AviationStack returns an empty array in `data` if the flight doesn't exist
       if (!json.data || json.data.length === 0) {
         setError({
           icon: '📭',
           title: 'Flight Not Found',
-          message: `We couldn't find any active data for ${flightNumber.toUpperCase()}. Double-check the airline code and number.`
+          message: `We couldn't find any active data for ${flightNumber.toUpperCase()}. Double-check the airline code.`
         });
-        setIsLoading(false);
         return;
       }
 
@@ -123,17 +172,19 @@ export default function App() {
       setError({
         icon: '📡',
         title: 'Network Error',
-        message: 'Unable to reach the server. Please check your connection and ensure the backend proxy is running.'
+        message: 'Unable to reach the server. Please check your connection.'
       });
     } finally {
+      // 2. Turn off both spinners when finished
       setIsLoading(false);
+      setRefreshing(false);
     }
   };
 
   return (
     <SafeAreaProvider>
 
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+    
 
       <SafeAreaView style={styles.container}>
         <Text style={styles.title}>FlightUp</Text>
@@ -149,11 +200,29 @@ export default function App() {
           blurOnSubmit={true}
         />
 
-        {/* 2. If it's loading, show a spinner. If not, show the button. */}
-        {isLoading ? (
-          <ActivityIndicator size="large" color="#0000ff" />
-        ) : (
-          <Button title="Search" onPress={handleSearch} />
+        {/* The Search Button stays visible, but we disable it while loading so they can't spam it */}
+        <Button title="Search" onPress={handleSearch} disabled={isLoading} />
+
+        <ScrollView 
+          style={{ width: '100%' }} 
+          contentContainerStyle={{ flexGrow: 1 }} // Ensures empty states stay centered
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          alwaysBounceVertical={true}
+          refreshControl={
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={() => handleSearch(true)} 
+              tintColor="#007bff" // Makes the iOS spinner blue
+            />
+          }
+        >
+
+        {/* --- LOADING SKELETON --- */}
+        {/* This will push down into the empty space just like the real ticket */}
+        
+        {isLoading && (
+          <SkeletonCard />
         )}
 
 
@@ -289,10 +358,10 @@ export default function App() {
             </View>
           );
         })()}
-        
+        </ScrollView>
         <StatusBar style="auto" />
       </SafeAreaView>
-      </TouchableWithoutFeedback>
+    
     </SafeAreaProvider>
   );
 }
@@ -301,7 +370,7 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1, 
-    backgroundColor: '#f5f5f5',
+    backgroundColor: COLORS.background,
     alignItems: 'center', 
     justifyContent: 'center', // Wait, let's push it to the top so the keyboard doesn't hide it
     padding: 20,
@@ -311,40 +380,41 @@ const styles = StyleSheet.create({
     fontSize: 36,
     fontWeight: 'bold',
     marginBottom: 40,
-    color: '#333',
+    color: COLORS.textMain,
   },
   input: {
     height: 55,
     width: '100%',
-    borderColor: '#ccc',
+    borderColor: 'rgba(255,255,255,0.1)', // Softened border for dark mode
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 15,
     fontSize: 18,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.surface,
+    color: COLORS.textMain, // Added so user input is visible
     marginBottom: 20,
   },
   ticketCard: {
     marginTop: 40,
     width: '100%',
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.surface,
     borderRadius: 12,
     padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.3, // Slightly increased for dark mode depth
     shadowRadius: 4,
-    elevation: 3, // Shadow for Android
+    elevation: 3, 
   },
   airline: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: COLORS.textMain,
     textAlign: 'center',
   },
   status: {
     fontSize: 14,
-    color: '#28a745', // A nice "success" green
+    color: COLORS.statusGood, 
     textAlign: 'center',
     marginBottom: 20,
     marginTop: 5,
@@ -352,41 +422,43 @@ const styles = StyleSheet.create({
   },
   cityLabel: {
     fontSize: 12,
-    color: '#888',
+    color: COLORS.textMuted,
     marginBottom: 5,
   },
   airportCode: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#111',
+    color: COLORS.textMain,
   },
   details: {
     fontSize: 14,
-    color: '#555',
+    color: COLORS.textMuted,
     marginTop: 5,
   },
   dateText: {
     fontSize: 12,
-    color: '#666',
+    color: COLORS.textMuted,
     marginBottom: 4,
   },
   timeText: {
-    fontSize: 16,
+    fontSize: 20, // Merged your duplicate timeText blocks
     fontWeight: 'bold',
     marginTop: 5,
-    color: '#333',
+    marginVertical: 4,
+    color: COLORS.textMain,
   },
   scheduledTime: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#888',
-    textDecorationLine: 'line-through', // This creates the crossed-out effect
+    color: COLORS.textMuted,
+    textDecorationLine: 'line-through', 
     marginTop: 5,
+    marginBottom: -2,
   },
   actualTime: {
-    fontSize: 16,
+    fontSize: 20, // Merged your duplicate actualTime blocks
     fontWeight: 'bold',
-    color: '#dc3545', // Red to immediately highlight the new time
+    color: COLORS.statusBad, // Base color, inline style can override
     marginTop: 2,
   },
   delayedTimeContainer: {
@@ -394,6 +466,7 @@ const styles = StyleSheet.create({
   },
   delayText: {
     fontSize: 12,
+    color: COLORS.statusBad, // Explicitly mapped to bad status
     marginTop: 4,
     fontWeight: 'bold',
   },
@@ -403,7 +476,7 @@ const styles = StyleSheet.create({
   },
   progressText: {
     fontSize: 11,
-    color: '#007bff', // Blue to indicate active flight status
+    color: COLORS.primary, 
     fontWeight: '700',
     marginTop: 2,
   },
@@ -432,12 +505,12 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingTop: 10,
     borderTopWidth: 1,
-    borderColor: '#eee',
+    borderColor: 'rgba(255,255,255,0.1)', // Soft dark mode divider
   },
   totalTimeText: {
     textAlign: 'center',
     fontSize: 12,
-    color: '#666',
+    color: COLORS.textMuted,
     fontWeight: '600',
     marginBottom: 12,
   },
@@ -448,64 +521,66 @@ const styles = StyleSheet.create({
   },
   progressBarBackground: {
     height: 3,
-    backgroundColor: '#e0e0e0',
+    backgroundColor: 'rgba(255,255,255,0.1)', // Dark mode track
     borderRadius: 2,
     width: '100%',
     position: 'absolute',
   },
   progressBarFill: {
     height: 3,
-    backgroundColor: '#5a9b2b', // FlightAware Green
+    backgroundColor: COLORS.primary, 
     borderRadius: 2,
     position: 'absolute',
   },
   progressPlaneIcon: {
     position: 'absolute',
     fontSize: 22,
-    marginLeft: -11, // Keeps the nose of the plane exactly on the percentage line
+    marginLeft: -11, 
     top: 0,
-    color: '#5a9b2b',
+    color: COLORS.primary,
   },
   progressLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
   progressPill: {
-    backgroundColor: '#6c8194', // FlightAware Blue/Grey pill
+    backgroundColor: COLORS.secondary, // Utilizing the deep purple accent
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 4,
   },
   progressLabelText: {
     fontSize: 11,
-    color: '#fff',
+    color: COLORS.textMain,
     fontWeight: 'bold',
   },
   planeIcon: {
     fontSize: 24,
+    color: COLORS.textMain,
   },
   emptyStateContainer: {
-    flex: 1, // Tells it to fill all the available empty space below the search bar
+    flex: 1, 
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 30,
-    marginTop: -40, // Pulls it up slightly so it feels perfectly centered
+    marginTop: -40, 
   },
   emptyStateIcon: {
     fontSize: 72,
     marginBottom: 20,
+    color: COLORS.textMuted, // Optional: ensures icon matches theme
   },
   emptyStateTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#333',
+    color: COLORS.textMain,
     marginBottom: 10,
   },
   emptyStateSubtitle: {
     fontSize: 16,
-    color: '#666',
+    color: COLORS.textMuted,
     textAlign: 'center',
-    lineHeight: 22, // Adds breathing room between the lines of text
+    lineHeight: 22, 
   },
   errorContainer: {
     flex: 1,
@@ -521,12 +596,12 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#d9534f', // A premium, muted red
+    color: COLORS.statusBad, 
     marginBottom: 10,
   },
   errorMessage: {
     fontSize: 16,
-    color: '#666',
+    color: COLORS.textMuted,
     textAlign: 'center',
     lineHeight: 22,
   },
@@ -538,21 +613,52 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     marginVertical: 4,
   },
-  timeText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    marginVertical: 4,
+  // Skeleton styles updated to a deeper contrast for dark mode
+  skeletonHeader: {
+    height: 24,
+    width: '60%',
+    backgroundColor: '#2A364F', 
+    borderRadius: 4,
+    marginBottom: 8,
   },
-  scheduledTime: {
-    fontSize: 14,
-    color: '#999',
-    textDecorationLine: 'line-through', // The strikethrough magic
-    marginBottom: -2, // Pulls the actual time up slightly so they group together visually
+  skeletonSubHeader: {
+    height: 16,
+    width: '40%',
+    backgroundColor: '#2A364F',
+    borderRadius: 4,
+    marginBottom: 20,
   },
-  actualTime: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    // We let the inline style dynamically inject the red or green color here!
+  skeletonCityBlockLeft: {
+    alignItems: 'flex-start',
+  },
+  skeletonCityBlockRight: {
+    alignItems: 'flex-end',
+  },
+  skeletonLabel: {
+    height: 12,
+    width: 50,
+    backgroundColor: '#2A364F',
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  skeletonCode: {
+    height: 32,
+    width: 80,
+    backgroundColor: '#2A364F',
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  skeletonTime: {
+    height: 20,
+    width: 60,
+    backgroundColor: '#2A364F',
+    borderRadius: 4,
+  },
+  skeletonProgressBar: {
+    height: 8,
+    width: '100%',
+    backgroundColor: '#2A364F',
+    borderRadius: 4,
+    marginTop: 15,
   }
 });
