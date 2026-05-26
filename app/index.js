@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useState, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, Animated, Button, ScrollView, RefreshControl} from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, Animated, Button, ScrollView, RefreshControl, useWindowDimensions} from 'react-native';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
@@ -122,6 +122,10 @@ export default function App() {
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [recentSearches, setRecentSearches] = useState([]);
+
+  // NEW: Responsive Screen Detection
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768; // Standard tablet/desktop breakpoint
 
   useEffect(() => {
     const loadHistory = async () => {
@@ -289,88 +293,102 @@ export default function App() {
           const isActive = flightData.flight_status === 'active' || (hasDeparted && !hasArrived);
           
           return (
-            <View style={styles.ticketCard}>
-              <Text style={styles.airline}>{flightData.airline.name} {flightData.flight.iata}</Text>
-              <Text style={[styles.status, isActive && {color: '#007bff'}]}>
-                Status: {isActive ? "ACTIVE" : flightData.flight_status.toUpperCase()}
-              </Text>
+            // NEW: The dynamic wrapper that shifts between row and column
+            <View style={[styles.resultsWrapper, isDesktop ? styles.resultsWrapperDesktop : styles.resultsWrapperMobile]}>
+              
+              {/* PRIMARY TICKET CARD */}
+              <View style={[styles.ticketCard, isDesktop && styles.ticketCardDesktop]}>
+                <Text style={styles.airline}>{flightData.airline.name} {flightData.flight.iata}</Text>
+                <Text style={[styles.status, isActive && {color: '#007bff'}]}>
+                  Status: {isActive ? "ACTIVE" : flightData.flight_status.toUpperCase()}
+                </Text>
 
-              <View style={styles.routeContainer}>
-                
-                <View style={styles.citiesRow}>
+                <View style={styles.routeContainer}>
                   
-                  <View style={styles.cityBlockLeft}>
-                    <Text style={styles.cityLabel}>DEPART</Text>
-                    <Text style={styles.airportCode}>{flightData.departure.iata}</Text>
-                    <Text style={styles.dateText}>{formatDate(flightData.departure.estimated || flightData.departure.scheduled)}</Text>
+                  <View style={styles.citiesRow}>
                     
-                    {depDelay.hasChanged ? (
-                      <View style={styles.timeStackLeft}>
-                        <Text style={styles.scheduledTime}>{formatTime(flightData.departure.scheduled)}</Text>
-                        <Text style={[styles.actualTime, { color: depDelay.color }]}>
-                          {formatTime(flightData.departure.actual || flightData.departure.estimated || flightData.departure.scheduled)}
-                        </Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.timeText}>{formatTime(flightData.departure.scheduled)}</Text>
-                    )}
-
-                    <Text style={styles.details}>Gate: {flightData.departure.gate || "TBD"}</Text>
-                    <Text style={[styles.delayText, { color: depDelay.color }]}>{depDelay.text}</Text>
-                  </View>
-
-                  <View style={styles.cityBlockRight}>
-                    <Text style={styles.cityLabel}>ARRIVE</Text>
-                    <Text style={styles.airportCode}>{flightData.arrival.iata}</Text>
-                    <Text style={styles.dateText}>{formatDate(flightData.arrival.estimated || flightData.arrival.scheduled)}</Text>
-                    
-                    {arrDelay.hasChanged ? (
-                      <View style={styles.timeStackRight}>
-                        <Text style={styles.scheduledTime}>{formatTime(flightData.arrival.scheduled)}</Text>
-                        <Text style={[styles.actualTime, { color: arrDelay.color }]}>
-                          {formatTime(flightData.arrival.actual || flightData.arrival.estimated || flightData.arrival.scheduled)}
-                        </Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.timeText}>{formatTime(flightData.arrival.scheduled)}</Text>
-                    )}
-
-                    <Text style={styles.details}>Term: {flightData.arrival.terminal || "TBD"}</Text>
-                    <Text style={[styles.delayText, { color: arrDelay.color }]}>{arrDelay.text}</Text>
-                  </View>
-                  
-                </View>
-
-                {isActive && (() => {
-                  const progress = getFlightProgress(
-                    flightData.departure.actual || flightData.departure.estimated,
-                    flightData.arrival.estimated || flightData.arrival.scheduled,
-                    flightData.departure.timezone, 
-                    flightData.arrival.timezone    
-                  );
-                  return progress ? (
-                    <View style={styles.progressSection}>
-                      <Text style={styles.totalTimeText}>{progress.total} total travel time</Text>
+                    <View style={styles.cityBlockLeft}>
+                      <Text style={styles.cityLabel}>DEPART</Text>
+                      <Text style={styles.airportCode}>{flightData.departure.iata}</Text>
+                      <Text style={styles.dateText}>{formatDate(flightData.departure.estimated || flightData.departure.scheduled)}</Text>
                       
-                      <View style={styles.progressBarContainer}>
-                        <View style={styles.progressBarBackground} />
-                        <View style={[styles.progressBarFill, { width: `${progress.percentage}%` }]} />
-                        <Text style={[styles.progressPlaneIcon, { left: `${progress.percentage}%` }]}>✈️</Text>
-                      </View>
-                      
-                      <View style={styles.progressLabels}>
-                        <View style={styles.progressPill}>
-                          <Text style={styles.progressLabelText}>{progress.elapsed} elapsed</Text>
+                      {depDelay.hasChanged ? (
+                        <View style={styles.timeStackLeft}>
+                          <Text style={styles.scheduledTime}>{formatTime(flightData.departure.scheduled)}</Text>
+                          <Text style={[styles.actualTime, { color: depDelay.color }]}>
+                            {formatTime(flightData.departure.actual || flightData.departure.estimated || flightData.departure.scheduled)}
+                          </Text>
                         </View>
-                        <View style={styles.progressPill}>
-                          <Text style={styles.progressLabelText}>{progress.remaining} remaining</Text>
-                        </View>
-                      </View>
+                      ) : (
+                        <Text style={styles.timeText}>{formatTime(flightData.departure.scheduled)}</Text>
+                      )}
+
+                      <Text style={styles.details}>Gate: {flightData.departure.gate || "TBD"}</Text>
+                      <Text style={[styles.delayText, { color: depDelay.color }]}>{depDelay.text}</Text>
                     </View>
-                  ) : null;
-                })()}
 
+                    <View style={styles.cityBlockRight}>
+                      <Text style={styles.cityLabel}>ARRIVE</Text>
+                      <Text style={styles.airportCode}>{flightData.arrival.iata}</Text>
+                      <Text style={styles.dateText}>{formatDate(flightData.arrival.estimated || flightData.arrival.scheduled)}</Text>
+                      
+                      {arrDelay.hasChanged ? (
+                        <View style={styles.timeStackRight}>
+                          <Text style={styles.scheduledTime}>{formatTime(flightData.arrival.scheduled)}</Text>
+                          <Text style={[styles.actualTime, { color: arrDelay.color }]}>
+                            {formatTime(flightData.arrival.actual || flightData.arrival.estimated || flightData.arrival.scheduled)}
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.timeText}>{formatTime(flightData.arrival.scheduled)}</Text>
+                      )}
+
+                      <Text style={styles.details}>Term: {flightData.arrival.terminal || "TBD"}</Text>
+                      <Text style={[styles.delayText, { color: arrDelay.color }]}>{arrDelay.text}</Text>
+                    </View>
+                    
+                  </View>
+
+                  {isActive && (() => {
+                    const progress = getFlightProgress(
+                      flightData.departure.actual || flightData.departure.estimated,
+                      flightData.arrival.estimated || flightData.arrival.scheduled,
+                      flightData.departure.timezone, 
+                      flightData.arrival.timezone    
+                    );
+                    return progress ? (
+                      <View style={styles.progressSection}>
+                        <Text style={styles.totalTimeText}>{progress.total} total travel time</Text>
+                        
+                        <View style={styles.progressBarContainer}>
+                          <View style={styles.progressBarBackground} />
+                          <View style={[styles.progressBarFill, { width: `${progress.percentage}%` }]} />
+                          <Text style={[styles.progressPlaneIcon, { left: `${progress.percentage}%` }]}>✈️</Text>
+                        </View>
+                        
+                        <View style={styles.progressLabels}>
+                          <View style={styles.progressPill}>
+                            <Text style={styles.progressLabelText}>{progress.elapsed} elapsed</Text>
+                          </View>
+                          <View style={styles.progressPill}>
+                            <Text style={styles.progressLabelText}>{progress.remaining} remaining</Text>
+                          </View>
+                        </View>
+                      </View>
+                    ) : null;
+                  })()}
+
+                </View>
               </View>
+
+              {/* NEW: THE DESKTOP-ONLY SIDE PANEL PLACEHOLDER */}
+              {isDesktop && (
+                <View style={styles.sidePanelDesktop}>
+                  <Text style={styles.sidePanelTitle}>Flight Metadata</Text>
+                  <Text style={styles.sidePanelText}>Logo & deeper details will mount here.</Text>
+                </View>
+              )}
+
             </View>
             
           );
@@ -420,8 +438,24 @@ const styles = StyleSheet.create({
     color: COLORS.textMain, 
     marginBottom: 20,
   },
-  ticketCard: {
+// NEW: Responsive Grid Wrappers
+  resultsWrapper: {
+    width: '100%',
     marginTop: 40,
+    gap: 20, // Adds clean spacing between the card and the panel
+  },
+  resultsWrapperDesktop: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  resultsWrapperMobile: {
+    flexDirection: 'column',
+    alignItems: 'center',
+  },
+  
+  // UPDATED: Ticket Card (Removed the hardcoded marginTop)
+  ticketCard: {
     width: '100%',
     backgroundColor: COLORS.surface,
     borderRadius: 12,
@@ -431,6 +465,31 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3, 
     shadowRadius: 4,
     elevation: 3, 
+  },
+  ticketCardDesktop: {
+    flex: 2, // Tells the card to take up roughly 66% of the screen
+    maxWidth: 800,
+  },
+
+  // NEW: Temporary Desktop Panel Style
+  sidePanelDesktop: {
+    flex: 1, // Tells the panel to take up the remaining 33%
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    padding: 20,
+    minWidth: 300,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 255, 0.2)', // Soft electric cyan border
+  },
+  sidePanelTitle: {
+    color: '#00FFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  sidePanelText: {
+    color: COLORS.textMuted,
+    fontSize: 14,
   },
   airline: {
     fontSize: 18,
