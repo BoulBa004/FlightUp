@@ -187,7 +187,7 @@ export default function App() {
     
 
       <SafeAreaView style={styles.container}>
-        <Text style={styles.title}>FlightUp</Text>
+        <Text style={styles.title}>Fligh tUp</Text>
         
         <TextInput
           style={styles.input}
