@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 // 1. Added View and ActivityIndicator (loading spinner) to the imports
 import React, { useState, useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, Animated, Button, ScrollView, RefreshControl} from 'react-native';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -139,6 +140,31 @@ export default function App() {
   // NEW: Track the pull-to-refresh state separately
   const [refreshing, setRefreshing] = useState(false);
 
+  const [recentSearches, setRecentSearches] = useState([]);
+
+  // 1. Load history when the app opens
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('flightup_history');
+        if (saved) setRecentSearches(JSON.parse(saved));
+      } catch (e) { console.error('Failed to load history', e); }
+    };
+    loadHistory();
+  }, []);
+
+  // 2. Save a new search to history (keeping the most recent 5)
+  const saveSearchToHistory = async (flightNum) => {
+    try {
+      const upperFlight = flightNum.toUpperCase();
+      // Remove duplicates and keep only the top 5
+      const updatedHistory = [upperFlight, ...recentSearches.filter(f => f !== upperFlight)].slice(0, 5);
+      
+      setRecentSearches(updatedHistory);
+      await AsyncStorage.setItem('flightup_history', JSON.stringify(updatedHistory));
+    } catch (e) { console.error('Failed to save history', e); }
+  };
+
   const handleSearch = async (isRefresh = false) => {
     Keyboard.dismiss();
     if (!flightNumber.trim()) return;
@@ -157,6 +183,8 @@ export default function App() {
       const baseUrl = process.env.EXPO_PUBLIC_API_URL;
       const response = await fetch(`${baseUrl}/api/flight/${flightNumber}`);
       const json = await response.json();
+      // Add this right after you successfully receive the flight data
+      saveSearchToHistory(flightNumber);
       
       if (!json.data || json.data.length === 0) {
         setError({
@@ -202,6 +230,28 @@ export default function App() {
 
         {/* The Search Button stays visible, but we disable it while loading so they can't spam it */}
         <Button title="Search" onPress={handleSearch} disabled={isLoading} />
+
+        {/* NEW: Recent Searches UI */}
+        {recentSearches.length > 0 && (
+          <View style={styles.historyContainer}>
+            <Text style={styles.historyTitle}>Recent Searches</Text>
+            <View style={styles.historyRow}>
+              {recentSearches.map((flight) => (
+                <TouchableOpacity 
+                  key={flight} 
+                  style={styles.historyChip}
+                  // When they tap a chip, auto-populate the search and run it
+                  onPress={() => {
+                    setSearchQuery(flight); 
+                    handleSearch(flight); // Assumes your search function accepts a parameter
+                  }}
+                >
+                  <Text style={styles.historyChipText}>{flight}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
 
         <ScrollView 
           style={{ width: '100%' }} 
@@ -690,5 +740,36 @@ const styles = StyleSheet.create({
   navSeparator: {
     color: '#00FFFF',
     fontSize: 16,
+  },
+  historyContainer: {
+    marginTop: 30,
+    alignItems: 'center',
+    width: '100%',
+  },
+  historyTitle: {
+    color: '#A0AAB5', // Radar Gray
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+  },
+  historyRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  historyChip: {
+    backgroundColor: '#1A2130',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderColor: '#00FFFF', // Electric Cyan border
+    borderWidth: 1,
+  },
+  historyChipText: {
+    color: '#00FFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
   }
 });
