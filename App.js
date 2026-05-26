@@ -187,11 +187,11 @@ export default function App() {
     
 
       <SafeAreaView style={styles.container}>
-        <Text style={styles.title}>Fligh tUp</Text>
+        <Text style={styles.title}>FlightUp</Text>
         
         <TextInput
           style={styles.input}
-          placeholder="Paste Flight Number (e.g. AF1234)"
+          placeholder="Paste Flight Number (e.g. AH1234)"
           value={flightNumber}
           onChangeText={(text) => setFlightNumber(text.toUpperCase())}
           autoCapitalize="characters"
