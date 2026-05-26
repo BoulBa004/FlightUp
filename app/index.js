@@ -5,8 +5,8 @@ import { StyleSheet, Text, View, TextInput, TouchableOpacity, KeyboardAvoidingVi
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
-import { COLORS } from './constants/theme';
-
+import { COLORS } from '../constants/theme';
+import { Link } from 'expo-router';
 // Activate the plugins
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -355,6 +355,16 @@ export default function App() {
                 })()}
 
               </View>
+              {/* NEW: Navigation Footer */}
+              <View style={styles.navFooter}>
+                <Link href="/about" style={styles.navLink}>
+                  <Text style={styles.navText}>About</Text>
+                </Link>
+                <Text style={styles.navSeparator}>|</Text>
+                <Link href="/contact" style={styles.navLink}>
+                  <Text style={styles.navText}>Contact</Text>
+                </Link>
+              </View>
             </View>
           );
         })()}
@@ -660,5 +670,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#2A364F',
     borderRadius: 4,
     marginTop: 15,
+  },
+  navFooter: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 40,
+    paddingBottom: 20,
+  },
+  navLink: {
+    paddingHorizontal: 15,
+  },
+  navText: {
+    color: '#A0AAB5', // Radar Gray
+    fontSize: 14,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+  },
+  navSeparator: {
+    color: '#00FFFF',
+    fontSize: 16,
   }
 });
